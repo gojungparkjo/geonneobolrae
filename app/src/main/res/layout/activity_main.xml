@@ -82,8 +82,35 @@
         app:layout_constraintEnd_toEndOf="@id/map_view"
         app:layout_constraintStart_toStartOf="@id/map_view"
         app:layout_constraintTop_toTopOf="@id/map_view"
+        app:layout_constraintBottom_toTopOf="@+id/tv_stt"
         android:text="걸음수"
         android:textSize="40sp"
+        />
+
+    <TextView
+        android:id="@+id/tv_stt"
+        android:layout_marginTop="5dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/rounded_gray_transparent_bg"
+        app:layout_constraintEnd_toStartOf="@id/btn_stt"
+        app:layout_constraintStart_toStartOf="@id/map_view"
+        app:layout_constraintTop_toBottomOf="@id/trackingSteps"
+        android:text="STT"
+        android:textSize="40sp"
+        />
+
+    <Button
+        android:id="@+id/btn_stt"
+        android:layout_marginTop="5dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="STT TEST"
+        app:layout_constraintStart_toEndOf="@id/tv_stt"
+        app:layout_constraintEnd_toEndOf="@+id/map_view"
+        app:layout_constraintTop_toBottomOf="@+id/trackingSteps"
+
+
         />
     <androidx.appcompat.widget.SwitchCompat
         android:layout_width="wrap_content"
