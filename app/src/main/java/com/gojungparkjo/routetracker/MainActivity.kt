@@ -2,6 +2,7 @@ package com.gojungparkjo.routetracker
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PointF
@@ -10,6 +11,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -29,6 +31,7 @@ import com.gojungparkjo.routetracker.model.crosswalk.CrossWalkResponse
 import com.gojungparkjo.routetracker.model.trafficlight.TrafficLightResponse
 import com.google.android.gms.location.*
 import com.google.android.gms.tasks.CancellationTokenSource
+import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.naver.maps.geometry.LatLng
@@ -180,6 +183,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener,
         bindView()
         initMap()
         setupCompass()
+
+        sttTest()
 
     }
 
@@ -493,6 +498,43 @@ class MainActivity : AppCompatActivity(), SensorEventListener,
 //        text = "우리어플을 평가해주세요"
 //        tts!!.speak(text, TextToSpeech.QUEUE_FLUSH, null,"")
 //    }
+
+
+    fun sttTest(){
+        binding.btnStt.setOnClickListener(View.OnClickListener { view ->
+            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
+                .setAction("Action", null).show()
+
+
+            val intent = Intent()
+            intent.action = RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+            intent.putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+
+            val language = "ko-KR"
+
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
+            startActivityForResult(intent, 2)
+
+        })
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode == RESULT_OK) {
+            val results = data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val str = results!![0]
+            Toast.makeText(baseContext, str, Toast.LENGTH_SHORT).show()
+            val tv = findViewById<TextView>(R.id.tv_stt)
+            tv.text = str
+        }
+    }
+
+
+
 }
 
 
