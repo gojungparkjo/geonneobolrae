@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.PointF
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -12,43 +13,59 @@ import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.gojungparkjo.routetracker.ProjUtil.toLatLng
 import com.gojungparkjo.routetracker.data.RoadRepository
 import com.gojungparkjo.routetracker.databinding.ActivityMainBinding
+import com.gojungparkjo.routetracker.model.FeedBackDialog
+import com.gojungparkjo.routetracker.model.TTS_Module
+import com.gojungparkjo.routetracker.model.crosswalk.CrossWalkResponse
+import com.gojungparkjo.routetracker.model.trafficlight.TrafficLightResponse
 import com.google.android.gms.location.*
+import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.naver.maps.geometry.LatLng
 import com.naver.maps.geometry.LatLngBounds
-import com.naver.maps.map.MapFragment
-import com.naver.maps.map.NaverMap
-import com.naver.maps.map.OnMapReadyCallback
+import com.naver.maps.map.*
+import com.naver.maps.map.overlay.LocationOverlay
 import com.naver.maps.map.overlay.Marker
-import com.naver.maps.map.overlay.Overlay
+import com.naver.maps.map.overlay.OverlayImage
 import com.naver.maps.map.overlay.PolygonOverlay
+import com.naver.maps.map.util.FusedLocationSource
+import com.naver.maps.map.util.MarkerIcons
 import kotlinx.coroutines.*
+import kotlinx.coroutines.tasks.await
 import org.locationtech.proj4j.ProjCoordinate
-import java.time.LocalDateTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.atan2
 
+//speech branch2
 
 class MainActivity : AppCompatActivity(), SensorEventListener,
     OnMapReadyCallback {
-
     private val TAG = "MainActivity"
 
+    //    private var tts: TextToSpeech? = null
+//    private var text = ""
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
+    // 네이버지도 fusedlocationsourece
+    private lateinit var locationSource: FusedLocationSource
     private val repository = RoadRepository()
-
+    private var buttonSpeak: Button? = null
+    private var tv: TextView? = null
+    var currentSteps = 0
     val db = Firebase.firestore
     val dateTimeFormatter = DateTimeFormatter.ofPattern("yyMMdd-hhmmss.S")
-
+    lateinit var tts: TTS_Module
+    lateinit var compass: Compass
     val locationPermissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -68,6 +85,35 @@ class MainActivity : AppCompatActivity(), SensorEventListener,
         }
     }
 
+    // locationsource 퍼미션 ㅇ더어오기 추후 통합해야할듯??
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        if (locationSource.onRequestPermissionsResult(
+                requestCode, permissions,
+                grantResults
+            )
+        ) {
+            if (!locationSource.isActivated) { // //권한 거부됨
+                naverMap.locationTrackingMode = LocationTrackingMode.None
+            }
+            return
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
+    val stepPermissionRequest = fun() {
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.ACTIVITY_RECOGNITION),
+            0
+        )
+        Toast.makeText(this, "걸음수 권환획득.", Toast.LENGTH_SHORT).show()
+    }
+
+
     val locationCallback by lazy {
         object : LocationCallback() {
             @SuppressLint("SetTextI18n")
@@ -79,17 +125,25 @@ class MainActivity : AppCompatActivity(), SensorEventListener,
                                 "경도 ${location.longitude}" +
                                 "속도 ${location.speed}"
                     )
-                    db.collection(android.os.Build.MODEL)
-                        .document(LocalDateTime.now(ZoneId.of("JST")).format(dateTimeFormatter))
-                        .set(mapOf(Pair("lat", location.latitude), Pair("lng", location.longitude)))
-                        .addOnSuccessListener {
-                            Toast.makeText(applicationContext, "위치 정보 기록됨", Toast.LENGTH_SHORT)
-                                .show()
-                        }
+                }
+                for (location in locationResult.locations) {
+                    naverMap.let {
+                        val coord = LatLng(location)
+
+                        it.locationOverlay.isVisible = true
+                        it.locationOverlay.position = coord
+
+                        if (binding.trackingSwitch.isChecked) it.moveCamera(
+                            CameraUpdate.scrollTo(
+                                coord
+                            )
+                        )
+                    }
                 }
             }
         }
     }
+
 
     lateinit var binding: ActivityMainBinding
 
@@ -100,12 +154,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener,
     var job: Job? = null
 
     lateinit var sensorManager: SensorManager
-    private val accelerometerReading = FloatArray(3)
-    private val magnetometerReading = FloatArray(3)
 
-    private val rotationMatrix = FloatArray(9)
-    private val orientationAngles = FloatArray(3)
+    lateinit var cancellationTokenSource: CancellationTokenSource
 
+    private val polygonList = mutableListOf<PolygonOverlay>()
+    private val trafficLightMarkerList = mutableListOf<Marker>()
+
+    @SuppressLint("MissingPermission")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         savedInstanceState?.let {
@@ -113,10 +168,36 @@ class MainActivity : AppCompatActivity(), SensorEventListener,
                 requesting = it.getBoolean(REQUESTING_CODE)
             }
         }
+        tts = TTS_Module(this)
+
         binding = ActivityMainBinding.inflate(LayoutInflater.from(this))
         setContentView(binding.root)
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        locationSource = FusedLocationSource(this, LOCATION_PERMISSION_REQUEST_CODE)
+        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+
+        bindView()
+        initMap()
+        setupCompass()
+
+    }
+
+    private fun setupCompass() {
+        compass = Compass(this)
+        compass.setListener(object : Compass.CompassListener {
+            override fun onNewAzimuth(degree: Float) {
+                binding.compassTextView.text = degree.toInt().toString()
+                paintTrafficSignAndCrosswalkInSight(degree.toDouble())
+            }
+        })
+    }
+
+    var ep = 0.000011
+    private fun bindView() {
+        binding.compassTextView.setOnClickListener {
+            naverMap.locationOverlay.position = naverMap.cameraPosition.target
+        }
 
         binding.trackingButton.setOnClickListener {
             if (requesting) {
@@ -129,149 +210,141 @@ class MainActivity : AppCompatActivity(), SensorEventListener,
         binding.infoTextView.setOnClickListener {
             it.visibility = View.GONE
         }
+    }
 
-        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-
+    private fun initMap() {
         val fm = supportFragmentManager
         val mapFragment = fm.findFragmentById(R.id.map) as MapFragment?
             ?: MapFragment.newInstance().also {
                 fm.beginTransaction().add(R.id.map, it).commit()
             }
         mapFragment.getMapAsync(this)
-
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
         if (event == null) return
-        if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-            System.arraycopy(event.values, 0, accelerometerReading, 0, accelerometerReading.size)
-        } else if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
-            System.arraycopy(event.values, 0, magnetometerReading, 0, magnetometerReading.size)
+        if (event.sensor.type == Sensor.TYPE_STEP_DETECTOR) {
+            if (event.values[0] == 1.0f) {
+                currentSteps++;
+                binding.trackingSteps.setText(currentSteps.toString())
+            }
         }
-        updateOrientationAngles()
     }
 
     override fun onAccuracyChanged(p0: Sensor?, p1: Int) {
+        Log.d(TAG, "onAccuracyChanged: " + p0.toString())
+        Log.d(TAG, "onAccuracyChanged: $p1")
     }
 
-    fun updateOrientationAngles() {
-        // Update rotation matrix, which is needed to update orientation angles.
-        SensorManager.getRotationMatrix(
-            rotationMatrix,
-            null,
-            accelerometerReading,
-            magnetometerReading
-        )
+    var colorJob: Job? = null
 
-        // "mRotationMatrix" now has up-to-date information.
+    private fun paintTrafficSignAndCrosswalkInSight(degree: Double) {
+        if (job?.isActive == true) return
 
-        SensorManager.getOrientation(rotationMatrix, orientationAngles)
-        // "mOrientationAngles" now has up-to-date information.
-        val degree = ((Math.toDegrees(orientationAngles[0].toDouble()) + 360) % 360).toInt()
-        binding.compassTextView.text = degree.toString()
+        if (this::naverMap.isInitialized) {
+            colorJob?.let {
+                if (it.isActive) return
+            }
+            colorJob = MainScope().launch {
+                naverMap.let { map ->
+                    map.locationOverlay.bearing = degree.toFloat()
+                    trafficLightMarkerList.forEach {
+                        val temp = atan2(
+                            it.position.longitude - map.locationOverlay.position.longitude,
+                            it.position.latitude - map.locationOverlay.position.latitude
+                        ).toDegree()
+                        val diff = temp.toInt() - degree.toInt()
+                        val dist = it.position.distanceTo(map.locationOverlay.position)
+                        it.captionText = "diff: $diff"
+                        it.iconTintColor = if (diff in -20..20 && dist < 10) Color.BLACK else Color.GREEN
+                        it.icon = MarkerIcons.BLACK
+                        if (diff in -20..20 && dist < 10 && tts.tts.isSpeaking.not()) {
+                            tts.speakOut(it.tag.toString())
+                        }
+                    }
+                    polygonList.forEach { polygon ->
+                        var nearest = Double.MAX_VALUE
+                        var flag = false
+                        polygon.coords.forEach {
+                            val temp = it.distanceTo(map.locationOverlay.position)
+                            if (temp < nearest && temp < 10) {
+                                nearest = temp
+                                val temp2 = atan2(
+                                    it.longitude - map.locationOverlay.position.longitude,
+                                    it.latitude - map.locationOverlay.position.latitude
+                                ).toDegree()
+                                val diff = temp2.toInt() - degree.toInt()
+                                flag = diff in -20..20
+                            }
+                        }
+                        polygon.color = if (flag) Color.RED else Color.WHITE
+                    }
+                }
+
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.also { accelerometer ->
+        compass.start()
+        sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)?.also { stepDetect ->
             sensorManager.registerListener(
                 this,
-                accelerometer,
-                SensorManager.SENSOR_DELAY_NORMAL,
-                SensorManager.SENSOR_DELAY_UI
+                stepDetect,
+                SensorManager.SENSOR_DELAY_FASTEST
             )
         }
-        sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)?.also { magneticField ->
-            sensorManager.registerListener(
-                this,
-                magneticField,
-                SensorManager.SENSOR_DELAY_NORMAL,
-                SensorManager.SENSOR_DELAY_UI
-            )
-        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        compass.start()
     }
 
     override fun onPause() {
         super.onPause()
+        compass.stop()
         sensorManager.unregisterListener(this)
     }
 
+    override fun onStop() {
+        super.onStop()
+        compass.stop()
+    }
+
     override fun onMapReady(naverMap: NaverMap) {
-        this.naverMap = naverMap
         naverMap.addOnCameraIdleListener {
             addMarkersWithInBound(naverMap.contentBounds)
         }
+        naverMap.apply {
+            locationOverlay.icon =
+                OverlayImage.fromResource(com.naver.maps.map.R.drawable.navermap_default_location_overlay_sub_icon_cone)
+            locationOverlay.iconWidth = LocationOverlay.SIZE_AUTO
+            locationOverlay.iconHeight = LocationOverlay.SIZE_AUTO
+            locationOverlay.anchor = PointF(0.5f, 1f)
+        }
+        this.naverMap = naverMap
 
     }
-
-//    override fun onCurrentLocationUpdate(p0: MapView?, p1: MapPoint?, p2: Float) {
-//        p1?.let {
-//            CoroutineScope(Dispatchers.Main).launch {
-//                mapPointList?.nearestSign(p1)?.let {
-//                    nearestSign?.let {
-//                        mapView.removePOIItem(it)
-//                    }
-//                    nearestSign = MapPOIItem().apply {
-//                        itemName = "near"
-//                        markerType = MapPOIItem.MarkerType.BluePin
-//                        mapPoint = it.coordinate
-//                    }.also {
-//                        mapView.addPOIItem(it)
-//                    }
-//                    binding.nearTextView.text =
-//                        "가장 가까운 신호등 lat: ${p1.mapPointGeoCoord.latitude} lng ${p1.mapPointGeoCoord.longitude}"
-//
-//                }
-//            }
-//        }
-//    }
 
     fun addMarkersWithInBound(bound: LatLngBounds?) {
         job?.let {
             if (it.isActive) it.cancel()
         }
+        colorJob?.let { if (it.isActive) it.cancel() }
         job = CoroutineScope(Dispatchers.Main).launch {
             binding.loadingView.visibility = View.VISIBLE
             withContext(Dispatchers.Default) {
                 Log.d(TAG, "addMarkersWithInBound")
                 if (bound == null) return@withContext
                 if (naverMap.cameraPosition.zoom > 16) {
-                    val temp = repository.getRoadInBound(bound)
+                    val response = repository.getRoadInBound(bound)
                     removeAllPolygon()
-                    temp?.features?.forEach { feature ->
-                        if(feature.properties?.vIEWCDE != "002" || feature.properties.eVECDE != "001") return@forEach
-                        feature.geometry?.coordinates?.forEach {
-                            val list = mutableListOf<LatLng>()
-                            it.forEach {
-                                list.add(ProjCoordinate(it[0], it[1]).toLatLng())
-                            }
-                            if (list.size > 2) {
-                                polygonList.add(PolygonOverlay().apply {
-                                    coords = list; color = Color.WHITE
-                                    outlineWidth = 5; outlineColor = Color.GREEN
-                                    tag = feature.properties.toString()
-                                    setOnClickListener {
-                                        binding.infoTextView.text = it.tag.toString()
-                                        binding.infoTextView.visibility=View.VISIBLE
-                                        Log.d(TAG, "addMarkersWithInBound: ${it.tag.toString()}")
-                                        true
-                                    }
-                                })
-                            }
-                        }
-                    }
+                    response?.let { addPolygonFromCrossWalkResponse(it) }
                     val trafficLights = repository.getTrafficLightInBound(bound)
                     removeTrafficLightMarker()
-                    trafficLights?.features?.forEach {feature ->
-                        if(feature.properties?.vIEWCDE != "002" || feature.properties.eVECDE != "001") return@forEach
-                        feature.properties.let{
-                            if (it.sNLPKNDCDE == "007" && it.xCE !=null && it.yCE!=null) {
-                                trafficLightMarkerList.add(Marker(ProjCoordinate(it.xCE,it.yCE).toLatLng()).apply { iconTintColor = Color.RED
-                                    tag = it.toString()
-                                    onClickListener = Overlay.OnClickListener { binding.infoTextView.text = it.tag.toString(); binding.infoTextView.visibility=View.VISIBLE; true }})
-                            }
-                        }
-                    }
+                    trafficLights?.let { addMarkerFromTrafficLightResponse(trafficLights) }
                     withContext(Dispatchers.Main) {
                         polygonList.forEach {
                             it.map = naverMap
@@ -282,15 +355,72 @@ class MainActivity : AppCompatActivity(), SensorEventListener,
                     }
                 }
             }
+
             binding.loadingView.visibility = View.GONE
         }
 
+    }
+
+    fun addPolygonFromCrossWalkResponse(response: CrossWalkResponse) {
+        response.features?.forEach { feature ->
+            if (feature.properties?.vIEWCDE != "002" || feature.properties.eVECDE != "001") return@forEach
+            feature.geometry?.coordinates?.forEach {
+                val list = mutableListOf<LatLng>()
+                it.forEach {
+                    list.add(ProjCoordinate(it[0], it[1]).toLatLng())
+                }
+                if (list.size > 2) {
+                    polygonList.add(PolygonOverlay().apply {
+                        coords = list; color = Color.WHITE
+                        outlineWidth = 5; outlineColor = Color.GREEN
+                        tag = feature.properties.toString()
+                        setOnClickListener {
+                            binding.infoTextView.text = it.tag.toString()
+                            binding.infoTextView.visibility = View.VISIBLE
+                            true
+                        }
+                    }.also {
+                        Log.d(TAG, "call convex hull")
+                        polygonList.add(it.getConvexHull().apply {
+                            color = Color.TRANSPARENT
+                            outlineColor = Color.RED
+                            outlineWidth = 5
+                            zIndex = 20000
+                        })
+                    })
+                }
+            }
+        }
+    }
+
+    suspend fun addMarkerFromTrafficLightResponse(response: TrafficLightResponse) {
+        response.features?.forEach { feature ->
+            if (feature.properties?.vIEWCDE != "002" || feature.properties.eVECDE != "001") return@forEach
+            feature.properties.let { property ->
+                if (property.sNLPKNDCDE == "007" && property.xCE != null && property.yCE != null) {
+                    feature.geometry?.coordinates?.first {
+                        val info = db.collection("trafficSignGuideInfo").document(property.mGRNU!!).get().await()
+                        trafficLightMarkerList.add(
+                            Marker(
+                                ProjCoordinate(
+                                    it[0],
+                                    it[1]
+                                ).toLatLng()
+                            ).apply {
+                                tag = info.get("line")?:"신호등 정보가 없습니다."
+                            }
+                        )
+                    }
+                }
+            }
+        }
     }
 
     suspend fun removeAllPolygon() = withContext(Dispatchers.Main) {
         polygonList.forEach {
             it.map = null
         }
+        polygonList.clear()
     }
 
     suspend fun removeTrafficLightMarker() = withContext(Dispatchers.Main) {
@@ -299,9 +429,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener,
         }
         trafficLightMarkerList.clear()
     }
-
-    val polygonList = mutableListOf<PolygonOverlay>()
-    val trafficLightMarkerList = mutableListOf<Marker>()
 
     fun checkPermissions() {
         if (ContextCompat.checkSelfPermission(
@@ -353,5 +480,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener,
 
     companion object {
         val REQUESTING_CODE = "100"
-        }
+        private const val LOCATION_PERMISSION_REQUEST_CODE = 1000
+    }
+
+    // tts part
+    override fun onBackPressed() {
+        val dig = FeedBackDialog(this)
+        dig.show(this)
+        tts.speakOut("우리 어플을 평가해주세요")
+    }
+//    private fun speakOut() {
+//        text = "우리어플을 평가해주세요"
+//        tts!!.speak(text, TextToSpeech.QUEUE_FLUSH, null,"")
+//    }
 }
+
+
+
+

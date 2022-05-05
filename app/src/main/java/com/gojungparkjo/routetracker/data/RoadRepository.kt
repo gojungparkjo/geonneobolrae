@@ -1,7 +1,7 @@
 package com.gojungparkjo.routetracker.data
 
 import com.gojungparkjo.routetracker.ProjUtil.toEPSG5186
-import com.gojungparkjo.routetracker.model.crosswalk.TrafficSafetyResponse
+import com.gojungparkjo.routetracker.model.crosswalk.CrossWalkResponse
 import com.gojungparkjo.routetracker.model.trafficlight.TrafficLightResponse
 import com.naver.maps.geometry.LatLngBounds
 import kotlinx.coroutines.Dispatchers
@@ -11,7 +11,7 @@ class RoadRepository {
 
     private val roadService = RoadApi.roadService
 
-    suspend fun getRoadInBound(bound: LatLngBounds): TrafficSafetyResponse? =
+    suspend fun getRoadInBound(bound: LatLngBounds): CrossWalkResponse? =
         withContext(Dispatchers.IO) {
             val low = bound.southWest.toEPSG5186()
             val up = bound.northEast.toEPSG5186()

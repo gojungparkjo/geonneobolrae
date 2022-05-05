@@ -3,7 +3,7 @@ package com.gojungparkjo.routetracker.model.crosswalk
 
 import com.google.gson.annotations.SerializedName
 
-data class TrafficSafetyResponse(
+data class CrossWalkResponse(
     @SerializedName("crs")
     val crs: Crs?,
     @SerializedName("features")
