@@ -46,6 +46,7 @@ import org.locationtech.proj4j.ProjCoordinate
 import java.time.format.DateTimeFormatter
 import kotlin.math.atan2
 
+//speech branch
 
 class MainActivity : AppCompatActivity(), SensorEventListener,
     OnMapReadyCallback {
