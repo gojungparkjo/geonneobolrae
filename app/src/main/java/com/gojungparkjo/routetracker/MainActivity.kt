@@ -46,6 +46,7 @@ import kotlin.math.atan2
 import kotlin.math.log
 import kotlin.math.min
 
+//color브랜치
 
 class MainActivity : AppCompatActivity(),
     OnMapReadyCallback {
