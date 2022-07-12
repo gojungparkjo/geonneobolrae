@@ -17,7 +17,6 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.gojungparkjo.routetracker.ProjUtil.toEPSG5186
 import com.gojungparkjo.routetracker.ProjUtil.toLatLng
 import com.gojungparkjo.routetracker.activity.destinationsetting.DestinationSettingActivity
 import com.gojungparkjo.routetracker.data.RoadRepository
@@ -28,7 +27,6 @@ import com.gojungparkjo.routetracker.model.crosswalk.CrossWalkResponse
 import com.gojungparkjo.routetracker.model.intersection.InterSectionResponse
 import com.gojungparkjo.routetracker.model.pedestrianroad.PedestrianRoadResponse
 import com.gojungparkjo.routetracker.model.trafficlight.TrafficLightResponse
-import com.gojungparkjo.routetracker.model.tmapdirection.TmapDirection
 import com.google.android.gms.location.*
 import com.naver.maps.geometry.LatLng
 import com.naver.maps.geometry.LatLngBounds
@@ -43,7 +41,6 @@ import org.locationtech.jts.geom.GeometryFactory
 import org.locationtech.jts.geom.LineSegment
 import org.locationtech.proj4j.ProjCoordinate
 import kotlin.math.atan2
-import kotlin.math.log
 import kotlin.math.min
 
 //color브랜치
@@ -172,6 +169,12 @@ class MainActivity : AppCompatActivity(),
         setupCompass()
         setupStepCounter()
         smsSttSetup()
+
+
+        binding.cameraTestButton.setOnClickListener {
+            val intent = Intent(this, ColorBlobDetectionActivity::class.java)
+            startActivity(intent)
+        }
     }
 
 
