@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PointF
 import android.os.Bundle
+import android.provider.MediaStore
 import android.speech.SpeechRecognizer
 import android.telephony.SmsManager
 import android.util.Log
@@ -251,6 +252,15 @@ class MainActivity : AppCompatActivity(),
         })
     }
 
+    private val REQUEST_IMAGE_CAPTURE = 2
+    private fun dispatchTakePictureIntent() {
+        Intent(MediaStore.ACTION_IMAGE_CAPTURE).also { takePictureIntent ->
+            takePictureIntent.resolveActivity(packageManager)?.also {
+                startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE)
+            }
+        }
+    }
+
     // 버튼 클릭 등 이벤트 관리
     private fun bindView() {
         binding.compassTextView.setOnClickListener {
@@ -286,14 +296,17 @@ class MainActivity : AppCompatActivity(),
                 stt.startSpeech()
             }
         }
-        // 테스트(오류 제보) 버튼
-        binding.bugReportButton.setOnClickListener {
-            val bundle = Bundle().apply {
-                putParcelable("position", getCurrentPosition())
-            }
-            BugReportFragment().apply { arguments = bundle }
-                .show(supportFragmentManager, "BugReport")
+        binding.btnCamera.setOnClickListener {
+            dispatchTakePictureIntent()
         }
+        // 테스트(오류 제보) 버튼
+//        binding.bugReportButton.setOnClickListener {
+//            val bundle = Bundle().apply {
+//                putParcelable("position", getCurrentPosition())
+//            }
+//            BugReportFragment().apply { arguments = bundle }
+//                .show(supportFragmentManager, "BugReport")
+//        }
         // 지도 모드/버튼 모드
         binding.mapButton.setOnClickListener {
             if (!mapMode) {
@@ -809,6 +822,14 @@ class MainActivity : AppCompatActivity(),
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.READ_EXTERNAL_STORAGE
             ) == PackageManager.PERMISSION_GRANTED
         ) {
             startTracking(fusedLocationClient)
@@ -819,7 +840,9 @@ class MainActivity : AppCompatActivity(),
                     Manifest.permission.ACCESS_FINE_LOCATION,
                     Manifest.permission.ACTIVITY_RECOGNITION,
                     Manifest.permission.SEND_SMS,
-                    Manifest.permission.RECORD_AUDIO
+                    Manifest.permission.RECORD_AUDIO,
+                    Manifest.permission.CAMERA,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
                 )
             )
         }

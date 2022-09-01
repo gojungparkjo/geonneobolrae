@@ -121,12 +121,12 @@
                     android:textColor="@color/black" />
 
                 <androidx.appcompat.widget.AppCompatButton
-                    android:id="@+id/bug_report_button"
+                    android:id="@+id/btnCamera"
                     android:layout_width="0dp"
                     android:layout_height="50dp"
                     android:layout_weight="1"
                     android:background="@color/white"
-                    android:text="오류 제보"
+                    android:text="등화 정보"
                     android:textColor="@color/black" />
 
             </LinearLayout>

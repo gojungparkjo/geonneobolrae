@@ -14,6 +14,11 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
 <!--    SMS-->
     <uses-permission android:name="android.permission.SEND_SMS" />
+<!--    카메라-->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
     <application
         android:name=".BaseApplication"
         android:allowBackup="true"
